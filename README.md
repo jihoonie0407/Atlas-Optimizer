@@ -1,4 +1,4 @@
-# AtlasOptimizer
+# AtlasOptimizer v1.1.1
 <img width="1652" height="900" alt="image" src="https://github.com/user-attachments/assets/3a69bca1-d6b6-4c9e-8c98-6c4c88ca9532" />
 
 
