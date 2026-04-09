@@ -1,5 +1,6 @@
 # AtlasOptimizer
-<img width="1656" height="868" alt="image" src="https://github.com/user-attachments/assets/ede2c0b6-25ba-4897-b14e-7d793834b96b" />
+<img width="1652" height="900" alt="image" src="https://github.com/user-attachments/assets/3a69bca1-d6b6-4c9e-8c98-6c4c88ca9532" />
+
 
 FX 시퀀스 아틀라스(Flipbook Texture)의 여백을 자동으로 제거하고 최적화하는 툴.
 
