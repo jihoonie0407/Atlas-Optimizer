@@ -2,7 +2,7 @@
 AtlasOptimizer - Houdini style
 demosaic -> transform (within frame bounds) -> mosaic
 """
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 
 import sys
 import math
@@ -585,7 +585,7 @@ class MainWindow(QMainWindow):
 
         # Fixed heights so all 3 previews are the same size
         TOP_H = 82
-        BOT_H = 158
+        BOT_H = 192
 
         # === Input Panel ===
         input_panel = QGroupBox("Input (Atlas)")
@@ -628,7 +628,7 @@ class MainWindow(QMainWindow):
         input_bot.setFixedHeight(BOT_H)
         input_bot_lay = QVBoxLayout(input_bot)
         input_bot_lay.setSpacing(4)
-        input_bot_lay.setContentsMargins(0, 4, 0, 0)
+        input_bot_lay.setContentsMargins(0, 4, 0, 4)
 
         self.load_btn = QPushButton("Load")
         self.load_btn.setObjectName("primary")
@@ -643,6 +643,12 @@ class MainWindow(QMainWindow):
         self.grid_info.setObjectName("info")
         input_bot_lay.addWidget(self.grid_info)
         input_bot_lay.addStretch()
+
+        self.update_btn = QPushButton("Check Update")
+        self.update_btn.setFixedHeight(24)
+        self.update_btn.setStyleSheet("QPushButton { font-size: 11px; color: #777; background: #252525; border: 1px solid #333; border-radius: 3px; padding: 2px 8px; } QPushButton:hover { color: #e8a838; border-color: #e8a838; }")
+        self.update_btn.clicked.connect(self._check_update)
+        input_bot_lay.addWidget(self.update_btn)
 
         input_layout.addWidget(input_bot)
 
@@ -1706,6 +1712,121 @@ class MainWindow(QMainWindow):
                 img.save(path)
 
             self.result_info.setText(f"Saved: {Path(path).name}")
+
+    def _check_update(self):
+        """Check GitHub repo for newer version"""
+        import urllib.request
+        import json
+
+        REPO_URL = "https://raw.githubusercontent.com/jihoonie0407/Atlas-Optimizer/main/app.py"
+
+        self.update_btn.setText("Checking...")
+        self.update_btn.setEnabled(False)
+        QApplication.processEvents()
+
+        try:
+            req = urllib.request.Request(REPO_URL, headers={'User-Agent': 'AtlasOptimizer'})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                # Read first 500 bytes to find VERSION
+                content = resp.read(500).decode('utf-8')
+
+            remote_version = None
+            for line in content.split('\n'):
+                if line.startswith('VERSION'):
+                    remote_version = line.split('"')[1]
+                    break
+
+            if not remote_version:
+                QMessageBox.warning(self, "Update", "버전 정보를 확인할 수 없습니다.")
+                return
+
+            if remote_version == VERSION:
+                QMessageBox.information(self, "Update",
+                    f"최신 버전입니다.\n\n현재 버전: v{VERSION}")
+            else:
+                reply = QMessageBox.question(self, "Update",
+                    f"새 버전이 있습니다.\n\n"
+                    f"v{VERSION}  →  v{remote_version}\n\n"
+                    f"업데이트 하시겠습니까?",
+                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+
+                if reply == QMessageBox.Yes:
+                    self._do_update(remote_version)
+
+        except Exception as e:
+            QMessageBox.warning(self, "Update",
+                f"업데이트 확인 실패:\n{e}\n\n인터넷 연결을 확인해주세요.")
+        finally:
+            self.update_btn.setText("Check Update")
+            self.update_btn.setEnabled(True)
+
+    def _do_update(self, new_version):
+        """Download latest from GitHub (no git required) and restart"""
+        import urllib.request
+        import zipfile
+        import tempfile
+        import shutil
+
+        ZIP_URL = "https://github.com/jihoonie0407/Atlas-Optimizer/archive/refs/heads/main.zip"
+        app_dir = Path(__file__).parent
+
+        self.update_btn.setText("Downloading...")
+        self.update_btn.setEnabled(False)
+        QApplication.processEvents()
+
+        try:
+            # Download zip to temp
+            tmp_zip = Path(tempfile.gettempdir()) / "atlas_optimizer_update.zip"
+            req = urllib.request.Request(ZIP_URL, headers={'User-Agent': 'AtlasOptimizer'})
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                tmp_zip.write_bytes(resp.read())
+
+            # Extract to temp dir
+            tmp_dir = Path(tempfile.gettempdir()) / "atlas_optimizer_update"
+            if tmp_dir.exists():
+                shutil.rmtree(tmp_dir)
+            with zipfile.ZipFile(str(tmp_zip), 'r') as zf:
+                zf.extractall(str(tmp_dir))
+
+            # Find extracted root (usually "Atlas-Optimizer-main/")
+            extracted = list(tmp_dir.iterdir())
+            if len(extracted) == 1 and extracted[0].is_dir():
+                src_root = extracted[0]
+            else:
+                src_root = tmp_dir
+
+            # Copy files, skip .git and __pycache__
+            skip = {'.git', '__pycache__', '.gitignore'}
+            for item in src_root.iterdir():
+                if item.name in skip:
+                    continue
+                dst = app_dir / item.name
+                if item.is_dir():
+                    if dst.exists():
+                        shutil.rmtree(str(dst))
+                    shutil.copytree(str(item), str(dst))
+                else:
+                    shutil.copy2(str(item), str(dst))
+
+            # Cleanup temp
+            try:
+                tmp_zip.unlink()
+                shutil.rmtree(str(tmp_dir))
+            except Exception:
+                pass
+
+            QMessageBox.information(self, "Update",
+                f"v{new_version} 업데이트 완료!\n\n앱을 재시작합니다.")
+
+            # Restart
+            import os
+            os.execv(sys.executable, [sys.executable] + sys.argv)
+
+        except Exception as e:
+            QMessageBox.warning(self, "Update", f"업데이트 실패:\n{e}")
+        finally:
+            self.update_btn.setText("Check Update")
+            self.update_btn.setEnabled(True)
 
 
 def _resource_path(relative):
