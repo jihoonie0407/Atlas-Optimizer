@@ -2,7 +2,7 @@
 AtlasOptimizer - Houdini style
 demosaic -> transform (within frame bounds) -> mosaic
 """
-VERSION = "1.1.1"
+VERSION = "1.2.0"
 
 import sys
 import math
@@ -43,7 +43,7 @@ class JumpSlider(QSlider):
             self.setValue(value)
             event.accept()
         super().mousePressEvent(event)
-from PyQt5.QtCore import Qt, QTimer, QRect, QRectF, QPointF
+from PyQt5.QtCore import Qt, QTimer, QRect, QRectF, QPointF, QMimeData
 from PyQt5.QtGui import QFont
 from PyQt5.QtGui import QPixmap, QImage, QPainter, QColor, QPen, QBrush, QCursor, QPainterPath, QIcon
 
@@ -574,6 +574,7 @@ class MainWindow(QMainWindow):
         self.play_timer = QTimer()
         self.play_timer.timeout.connect(self._next_frame)
 
+        self.setAcceptDrops(True)
         self._init_ui()
 
     def _init_ui(self):
@@ -960,11 +961,28 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(xform_panel, 1)
         main_layout.addWidget(result_panel, 1)
 
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            for url in event.mimeData().urls():
+                if url.isLocalFile() and Path(url.toLocalFile()).suffix.lower() in ('.png', '.jpg', '.jpeg', '.tga', '.bmp'):
+                    event.acceptProposedAction()
+                    return
+
+    def dropEvent(self, event):
+        paths = []
+        for url in event.mimeData().urls():
+            p = url.toLocalFile()
+            if Path(p).suffix.lower() in ('.png', '.jpg', '.jpeg', '.tga', '.bmp'):
+                paths.append(p)
+        if paths:
+            self._load_files(sorted(paths))
+
     def _load(self):
         paths, _ = QFileDialog.getOpenFileNames(self, "Load", "", "Images (*.png *.jpg *.tga);;All (*)")
-        if not paths:
-            return
+        if paths:
+            self._load_files(paths)
 
+    def _load_files(self, paths):
         # Reset all settings
         self._reset()
         self.result_atlas = None
