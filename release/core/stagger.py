@@ -64,6 +64,51 @@ def _to_grayscale(frame: Image.Image, mode: str) -> np.ndarray:
     return np.array(frame.convert('L'))
 
 
+def _next_pot(v):
+    """v 이상의 최소 Power of Two 반환"""
+    p = 1
+    while p < v:
+        p <<= 1
+    return p
+
+
+def optimal_stagger_grid(num_cells: int, fw: int, fh: int) -> Tuple[int, int]:
+    """
+    셀 수와 프레임 크기를 고려하여 POT 텍스처 면적이 최소인 그리드 반환.
+
+    Args:
+        num_cells: 패킹할 셀 수
+        fw: 프레임 너비
+        fh: 프레임 높이
+
+    Returns:
+        (rows, cols)
+    """
+    best_rows, best_cols = 1, num_cells
+    best_pot_area = float('inf')
+    best_max_dim = float('inf')
+    best_waste = num_cells
+
+    for r in range(1, num_cells + 1):
+        c = math.ceil(num_cells / r)
+        pot_w = _next_pot(fw * c)
+        pot_h = _next_pot(fh * r)
+        pot_area = pot_w * pot_h
+        max_dim = max(pot_w, pot_h)
+        waste = r * c - num_cells
+
+        # 1순위: POT 면적 최소, 2순위: 최대 변 길이 최소 (정사각형 선호), 3순위: 빈 셀 최소
+        if (pot_area < best_pot_area
+            or (pot_area == best_pot_area and max_dim < best_max_dim)
+            or (pot_area == best_pot_area and max_dim == best_max_dim and waste < best_waste)):
+            best_pot_area = pot_area
+            best_max_dim = max_dim
+            best_rows, best_cols = r, c
+            best_waste = waste
+
+    return best_rows, best_cols
+
+
 def stagger_pack(
     frames: List[Image.Image],
     rows: int,
@@ -94,11 +139,9 @@ def stagger_pack(
 
     # 4프레임씩 묶어서 셀 생성
     num_cells = math.ceil(total / 4)
-    grid_size = math.ceil(math.sqrt(num_cells))
 
-    # 정사각형 그리드로 맞춤
-    new_rows = grid_size
-    new_cols = grid_size
+    # 프레임 비율을 고려한 POT 최적 그리드 계산
+    new_rows, new_cols = optimal_stagger_grid(num_cells, fw, fh)
 
     # 아틀라스 배열 생성 (H, W, 4채널 RGBA)
     atlas_h = fh * new_rows

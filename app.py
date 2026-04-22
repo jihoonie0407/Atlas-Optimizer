@@ -2,7 +2,7 @@
 AtlasOptimizer - Houdini style
 demosaic -> transform (within frame bounds) -> mosaic
 """
-VERSION = "1.2.0"
+VERSION = "1.2.1"
 
 import sys
 import math
@@ -49,7 +49,7 @@ from PyQt5.QtGui import QPixmap, QImage, QPainter, QColor, QPen, QBrush, QCursor
 
 from core.demosaic import demosaic
 from core.mosaic import mosaic
-from core.stagger import stagger_pack
+from core.stagger import stagger_pack, optimal_stagger_grid
 
 MIN_PREVIEW = 512
 
@@ -1662,14 +1662,17 @@ class MainWindow(QMainWindow):
         # Packing 후 리사이즈하면 LANCZOS 보간이 채널 데이터를 깨뜨림
         total = r * c
         num_cells = math.ceil(total / 4)
-        grid_size = math.ceil(math.sqrt(num_cells))
         target_size = self.res_presets[self.res_index]
-        cell_size = target_size // grid_size
+        fw, fh = rendered[0].size
 
-        if cell_size > 0:
-            fw, fh = rendered[0].size
-            if fw != cell_size or fh != cell_size:
-                rendered = [f.resize((cell_size, cell_size), Image.Resampling.LANCZOS)
+        # stagger_pack과 동일한 최적 그리드로 셀 크기 계산
+        grid_r, grid_c = optimal_stagger_grid(num_cells, fw, fh)
+        cell_w = target_size // grid_c
+        cell_h = target_size // grid_r
+
+        if cell_w > 0 and cell_h > 0:
+            if fw != cell_w or fh != cell_h:
+                rendered = [f.resize((cell_w, cell_h), Image.Resampling.LANCZOS)
                            for f in rendered]
 
         packed, new_r, new_c = stagger_pack(rendered, r, c)
