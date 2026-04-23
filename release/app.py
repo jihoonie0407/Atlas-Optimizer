@@ -2,7 +2,7 @@
 AtlasOptimizer - Houdini style
 demosaic -> transform (within frame bounds) -> mosaic
 """
-VERSION = "1.2.2"
+VERSION = "1.2.3"
 
 import sys
 import math
@@ -1636,20 +1636,11 @@ class MainWindow(QMainWindow):
         r, c = self.rows_spin.value(), self.cols_spin.value()
         self.result_atlas = mosaic(rendered, r, c)
 
-        # Apply target resolution — ensure both dimensions are POT (engine compression)
+        # 정사각형 POT로 리사이즈 (엔진 압축 호환)
         target_size = self.res_presets[self.res_index]
         w, h = self.result_atlas.size
-        if w >= h:
-            new_w = target_size
-            new_h = _nearest_pot(round(h * target_size / w)) if w != 0 else target_size
-        else:
-            new_h = target_size
-            new_w = _nearest_pot(round(w * target_size / h)) if h != 0 else target_size
-        new_w = max(new_w, 1)
-        new_h = max(new_h, 1)
-
-        if (new_w, new_h) != (w, h):
-            self.result_atlas = self.result_atlas.resize((new_w, new_h), Image.Resampling.LANCZOS)
+        if (w, h) != (target_size, target_size):
+            self.result_atlas = self.result_atlas.resize((target_size, target_size), Image.Resampling.LANCZOS)
 
         self._update_result_preview()
         self.result_info.setText(f"{self.result_atlas.width}x{self.result_atlas.height}")
@@ -1674,21 +1665,12 @@ class MainWindow(QMainWindow):
 
         grid_r, grid_c = optimal_stagger_grid(num_cells, fw, fh)
 
-        # POT 아틀라스 목표 크기 결정
-        raw_w = fw * grid_c
-        raw_h = fh * grid_r
-        if raw_w >= raw_h:
-            atlas_target_w = target_size
-            atlas_target_h = _nearest_pot(round(raw_h * target_size / raw_w)) if raw_w != 0 else target_size
-        else:
-            atlas_target_h = target_size
-            atlas_target_w = _nearest_pot(round(raw_w * target_size / raw_h)) if raw_h != 0 else target_size
-        atlas_target_w = max(atlas_target_w, 1)
-        atlas_target_h = max(atlas_target_h, 1)
+        # 정사각형 POT 아틀라스 목표
+        atlas_target = target_size
 
         # 프레임 리사이즈 (패킹 전, 채널 분리 전)
-        cell_w = atlas_target_w // grid_c
-        cell_h = atlas_target_h // grid_r
+        cell_w = atlas_target // grid_c
+        cell_h = atlas_target // grid_r
         if cell_w > 0 and cell_h > 0:
             if fw != cell_w or fh != cell_h:
                 rendered = [f.resize((cell_w, cell_h), Image.Resampling.LANCZOS)
@@ -1696,10 +1678,10 @@ class MainWindow(QMainWindow):
 
         packed, new_r, new_c = stagger_pack(rendered, r, c)
 
-        # POT 부족분은 zero padding (리사이즈 금지 — 채널 데이터 보존)
+        # 정사각형 POT padding (리사이즈 금지 — 채널 데이터 보존)
         pw, ph = packed.size
-        if pw != atlas_target_w or ph != atlas_target_h:
-            padded = Image.new('RGBA', (atlas_target_w, atlas_target_h), (0, 0, 0, 0))
+        if pw != atlas_target or ph != atlas_target:
+            padded = Image.new('RGBA', (atlas_target, atlas_target), (0, 0, 0, 0))
             padded.paste(packed, (0, 0))
             packed = padded
 
