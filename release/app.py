@@ -2,7 +2,7 @@
 AtlasOptimizer - Houdini style
 demosaic -> transform (within frame bounds) -> mosaic
 """
-VERSION = "1.2.1"
+VERSION = "1.2.2"
 
 import sys
 import math
@@ -17,6 +17,19 @@ from PyQt5.QtWidgets import (
     QGroupBox, QCheckBox, QSizePolicy, QStyle, QStyleOptionSlider,
     QMessageBox
 )
+
+
+def _nearest_pot(v):
+    """v에 가장 가까운 Power of Two 반환 (엔진 압축 호환용)"""
+    if v <= 1:
+        return 1
+    lower = 1
+    while lower * 2 <= v:
+        lower *= 2
+    upper = lower * 2
+    if v - lower <= upper - v:
+        return lower
+    return upper
 
 
 class JumpSlider(QSlider):
@@ -1623,25 +1636,20 @@ class MainWindow(QMainWindow):
         r, c = self.rows_spin.value(), self.cols_spin.value()
         self.result_atlas = mosaic(rendered, r, c)
 
-        # Apply target resolution
+        # Apply target resolution — ensure both dimensions are POT (engine compression)
         target_size = self.res_presets[self.res_index]
-        current_size = max(self.result_atlas.width, self.result_atlas.height)
+        w, h = self.result_atlas.size
+        if w >= h:
+            new_w = target_size
+            new_h = _nearest_pot(round(h * target_size / w)) if w != 0 else target_size
+        else:
+            new_h = target_size
+            new_w = _nearest_pot(round(w * target_size / h)) if h != 0 else target_size
+        new_w = max(new_w, 1)
+        new_h = max(new_h, 1)
 
-        if current_size != target_size:
-            # Calculate new dimensions maintaining aspect ratio
-            ratio = target_size / current_size
-            new_w = int(self.result_atlas.width * ratio)
-            new_h = int(self.result_atlas.height * ratio)
-
-            # Use appropriate resampling algorithm
-            if ratio < 1:
-                # Downscale: Lanczos for sharp results
-                resample = Image.Resampling.LANCZOS
-            else:
-                # Upscale: Lanczos for smooth results
-                resample = Image.Resampling.LANCZOS
-
-            self.result_atlas = self.result_atlas.resize((new_w, new_h), resample)
+        if (new_w, new_h) != (w, h):
+            self.result_atlas = self.result_atlas.resize((new_w, new_h), Image.Resampling.LANCZOS)
 
         self._update_result_preview()
         self.result_info.setText(f"{self.result_atlas.width}x{self.result_atlas.height}")
@@ -1658,24 +1666,42 @@ class MainWindow(QMainWindow):
 
         r, c = self.rows_spin.value(), self.cols_spin.value()
 
-        # Resize each frame BEFORE packing (not after)
-        # Packing 후 리사이즈하면 LANCZOS 보간이 채널 데이터를 깨뜨림
+        # 프레임을 목표 셀 크기로 먼저 리사이즈 → 패킹 → POT 패딩
         total = r * c
         num_cells = math.ceil(total / 4)
         target_size = self.res_presets[self.res_index]
         fw, fh = rendered[0].size
 
-        # stagger_pack과 동일한 최적 그리드로 셀 크기 계산
         grid_r, grid_c = optimal_stagger_grid(num_cells, fw, fh)
-        cell_w = target_size // grid_c
-        cell_h = target_size // grid_r
 
+        # POT 아틀라스 목표 크기 결정
+        raw_w = fw * grid_c
+        raw_h = fh * grid_r
+        if raw_w >= raw_h:
+            atlas_target_w = target_size
+            atlas_target_h = _nearest_pot(round(raw_h * target_size / raw_w)) if raw_w != 0 else target_size
+        else:
+            atlas_target_h = target_size
+            atlas_target_w = _nearest_pot(round(raw_w * target_size / raw_h)) if raw_h != 0 else target_size
+        atlas_target_w = max(atlas_target_w, 1)
+        atlas_target_h = max(atlas_target_h, 1)
+
+        # 프레임 리사이즈 (패킹 전, 채널 분리 전)
+        cell_w = atlas_target_w // grid_c
+        cell_h = atlas_target_h // grid_r
         if cell_w > 0 and cell_h > 0:
             if fw != cell_w or fh != cell_h:
                 rendered = [f.resize((cell_w, cell_h), Image.Resampling.LANCZOS)
                            for f in rendered]
 
         packed, new_r, new_c = stagger_pack(rendered, r, c)
+
+        # POT 부족분은 zero padding (리사이즈 금지 — 채널 데이터 보존)
+        pw, ph = packed.size
+        if pw != atlas_target_w or ph != atlas_target_h:
+            padded = Image.new('RGBA', (atlas_target_w, atlas_target_h), (0, 0, 0, 0))
+            padded.paste(packed, (0, 0))
+            packed = padded
 
         self.result_atlas = packed
         self._stagger_grid = (new_r, new_c)

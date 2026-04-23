@@ -9,47 +9,14 @@ from PIL import Image
 from typing import List, Tuple
 
 
-def _decide_channel(frames: list) -> str:
+def _to_grayscale(frame: Image.Image) -> np.ndarray:
     """
-    전체 프레임을 분석하여 alpha vs luminance 중 하나를 결정.
-    모든 프레임에 동일하게 적용해야 채널 간 일관성이 유지됨.
-    """
-    total_a_std = 0.0
-    total_l_std = 0.0
-
-    for frame in frames:
-        arr = np.array(frame)
-        if frame.mode != 'RGBA':
-            return 'luminance'
-
-        r, g, b, a = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2], arr[:, :, 3]
-        gray = (0.299 * r.astype(np.float32)
-                + 0.587 * g.astype(np.float32)
-                + 0.114 * b.astype(np.float32))
-
-        total_a_std += np.std(a.astype(np.float32))
-        total_l_std += np.std(gray)
-
-    return 'alpha' if total_a_std >= total_l_std else 'luminance'
-
-
-def _to_grayscale(frame: Image.Image, mode: str) -> np.ndarray:
-    """
-    프레임을 그레이스케일 numpy 배열로 변환 (uint8, H×W)
-    mode='alpha' 또는 'luminance' — 전체 프레임에 동일 적용
+    프레임을 RGB luminance 기준 그레이스케일로 변환 (uint8, H×W)
+    알파 채널은 무시 — stagger에서는 A도 프레임 저장용이므로
     """
     arr = np.array(frame)
 
-    if frame.mode == 'RGBA':
-        if mode == 'alpha':
-            return arr[:, :, 3]
-        r, g, b = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2]
-        gray = (0.299 * r.astype(np.float32)
-                + 0.587 * g.astype(np.float32)
-                + 0.114 * b.astype(np.float32))
-        return np.clip(gray, 0, 255).astype(np.uint8)
-
-    elif frame.mode == 'RGB':
+    if frame.mode in ('RGBA', 'RGB'):
         r, g, b = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2]
         gray = (0.299 * r.astype(np.float32)
                 + 0.587 * g.astype(np.float32)
@@ -131,11 +98,8 @@ def stagger_pack(
     total = len(frames)
     fw, fh = frames[0].size
 
-    # 전체 프레임 기준으로 alpha/luminance 한 번만 결정
-    channel_mode = _decide_channel(frames)
-
-    # 그레이스케일 변환 (모든 프레임에 동일 모드 적용)
-    grays = [_to_grayscale(f, channel_mode) for f in frames]
+    # RGB luminance 기준 그레이스케일 변환 (알파 무시)
+    grays = [_to_grayscale(f) for f in frames]
 
     # 4프레임씩 묶어서 셀 생성
     num_cells = math.ceil(total / 4)
