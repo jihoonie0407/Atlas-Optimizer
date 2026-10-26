@@ -1252,19 +1252,15 @@ class MainWindow(QMainWindow):
         selected = [ch for ch in 'RGBA' if self.channel_view[ch]]
         auto = len(selected) in (0, 4)
         if auto:
-            # Meaningful alpha: any non-empty frame that isn't fully opaque
-            # (empty frames are skipped so sequence padding doesn't count)
-            has_alpha = False
-            for frame in self.frames:
-                a = np.array(frame)[:, :, 3]
-                if a.max() > 0 and a.min() < 250:
-                    has_alpha = True
-                    break
-            selected = ['A'] if has_alpha else ['R', 'G', 'B']
-        basis = ("Auto:" if auto else "") + "".join(selected)
-        ch_idx = ['RGBA'.index(ch) for ch in selected]
-        # Alpha: any non-zero / Color: > 10 to skip near-black background
-        thresholds = np.array([0 if i == 3 else 10 for i in ch_idx])
+            # Check if frames have meaningful alpha (not all opaque)
+            first_frame = np.array(self.frames[0])
+            has_alpha = np.any(first_frame[:, :, 3] < 250)
+            basis = "Auto:" + ("A" if has_alpha else "RGB")
+        else:
+            ch_idx = ['RGBA'.index(ch) for ch in selected]
+            # Alpha: any non-zero / Color: > 10 to skip near-black background
+            thresholds = np.array([0 if i == 3 else 10 for i in ch_idx])
+            basis = "".join(selected)
 
         # Find global bounding box across all frames
         global_left, global_top = fw, fh
@@ -1272,7 +1268,16 @@ class MainWindow(QMainWindow):
 
         for frame in self.frames:
             arr = np.array(frame)
-            mask = np.any(arr[:, :, ch_idx] > thresholds, axis=2)
+
+            if not auto:
+                mask = np.any(arr[:, :, ch_idx] > thresholds, axis=2)
+            elif has_alpha:
+                # Use alpha channel
+                mask = arr[:, :, 3] > 0
+            else:
+                # Use brightness (grayscale)
+                brightness = np.mean(arr[:, :, :3], axis=2)
+                mask = brightness > 10  # Threshold for dark pixels
 
             rows = np.any(mask, axis=1)
             cols = np.any(mask, axis=0)
