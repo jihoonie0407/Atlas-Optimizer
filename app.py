@@ -2,7 +2,7 @@
 AtlasOptimizer - Houdini style
 demosaic -> transform (within frame bounds) -> mosaic
 """
-VERSION = "1.2.4"
+VERSION = "1.2.5"
 
 import sys
 import math
@@ -1111,106 +1111,29 @@ class MainWindow(QMainWindow):
         self._auto_fit()
 
     def _auto_detect_grid(self):
-        """Auto-detect grid by analyzing content clustering in each potential cell"""
+        """Auto-detect grid: pick rows/cols separately, finest count whose cell
+        boundaries look like frame edges (empty gutter or hard cut) while cell centers don't"""
         if not self.atlas:
             return
 
-        w, h = self.atlas.size
-        arr = np.array(self.atlas, dtype=np.float32)
+        arr = np.asarray(self.atlas)
 
         # Check if image has meaningful alpha channel
         has_alpha = np.any(arr[:, :, 3] < 250)
 
         if has_alpha:
-            content = arr[:, :, 3]
+            content = arr[:, :, 3].astype(np.float32)
         else:
-            content = np.max(arr[:, :, :3], axis=2)
+            content = np.max(arr[:, :, :3], axis=2).astype(np.float32)
 
-        # Normalize
-        if np.max(content) > 0:
-            content = content / np.max(content)
+        # Ignore noise floor / faint background (JPEG noise etc.)
+        content = np.maximum(content - 10, 0)
 
-        best_rows, best_cols = 4, 4
-        best_score = -1
-
-        # Try common grid configurations
-        candidates = []
-        for rows in [2, 3, 4, 5, 6, 7, 8, 10, 12, 16]:
-            for cols in [2, 3, 4, 5, 6, 7, 8, 10, 12, 16]:
-                if h % rows == 0 and w % cols == 0:
-                    candidates.append((rows, cols))
-
-        for rows, cols in candidates:
-            frame_h = h // rows
-            frame_w = w // cols
-
-            cells_with_content = 0
-            total_center_vs_edge = 0
-
-            for r in range(rows):
-                for c in range(cols):
-                    y1, y2 = r * frame_h, (r + 1) * frame_h
-                    x1, x2 = c * frame_w, (c + 1) * frame_w
-                    cell = content[y1:y2, x1:x2]
-
-                    # Check if cell has content
-                    if np.mean(cell) > 0.01:
-                        cells_with_content += 1
-
-                    # Analyze center vs edge - correct grid has high center, low edges
-                    margin = max(2, min(frame_w, frame_h) // 8)  # 12.5% margin
-
-                    # Edge region (outer ring)
-                    edge_mask = np.ones_like(cell, dtype=bool)
-                    edge_mask[margin:-margin, margin:-margin] = False
-                    edge_content = np.mean(cell[edge_mask]) if np.any(edge_mask) else 0
-
-                    # Center region (inner area)
-                    center = cell[margin:-margin, margin:-margin]
-                    center_content = np.mean(center) if center.size > 0 else 0
-
-                    # Ratio: high center / low edge = correct boundary
-                    if edge_content > 0.001:
-                        ratio = center_content / (edge_content + 0.001)
-                    else:
-                        ratio = center_content * 100 if center_content > 0.01 else 0
-                    total_center_vs_edge += min(ratio, 50)  # cap at 50
-
-            total_cells = rows * cols
-            content_ratio = cells_with_content / total_cells
-            avg_center_vs_edge = total_center_vs_edge / total_cells
-
-            # Skip if too few cells have content
-            if content_ratio < 0.3:
-                continue
-
-            # Score components
-            score = 0
-
-            # Content ratio - prefer more cells with content
-            score += content_ratio * 30
-
-            # Center vs edge ratio - KEY metric
-            # Correct grid: content centered in each cell
-            score += avg_center_vs_edge * 2
-
-            # Square frames preferred
-            if frame_w == frame_h:
-                score += 20
-
-            # Power of 2 frame sizes (common in game assets)
-            if frame_w in [64, 128, 256, 512, 1024]:
-                score += 10
-            if frame_h in [64, 128, 256, 512, 1024]:
-                score += 10
-
-            # Higher grid counts get small bonus when close scores
-            # (finer grid is usually more accurate)
-            score += (rows * cols) * 0.1
-
-            if score > best_score:
-                best_score = score
-                best_rows, best_cols = rows, cols
+        if content.max() > 0:
+            best_rows = self._detect_grid_axis(content.T)
+            best_cols = self._detect_grid_axis(content)
+        else:
+            best_rows, best_cols = 4, 4
 
         self.rows_spin.blockSignals(True)
         self.cols_spin.blockSignals(True)
@@ -1218,6 +1141,51 @@ class MainWindow(QMainWindow):
         self.cols_spin.setValue(best_cols)
         self.rows_spin.blockSignals(False)
         self.cols_spin.blockSignals(False)
+
+    @staticmethod
+    def _detect_grid_axis(content, max_n=16, min_cell=16):
+        """Frame count along x of a content map (H, W). Use content.T for rows."""
+        w = content.shape[1]
+        p = content.mean(axis=0)                            # column content profile
+        s = np.abs(np.diff(content, axis=1)).mean(axis=0)
+        s = np.concatenate([[s[0]], s])                     # s[x]: seam between x-1 and x
+        # Hard cut: seam much stronger than lines 2-3px away (frames without margin)
+        sp = np.pad(s, 3, mode='edge')
+        spike = np.maximum(0, s - (sp[0:-6] + sp[1:-5] + sp[5:-1] + sp[6:]) / 4)
+        p_ref = p.mean() + 1e-6
+        cp = np.concatenate([[0], np.cumsum(p)])
+        cs = np.concatenate([[0], np.cumsum(s)])
+
+        def band_mean(csum, lo, hi):
+            lo, hi = max(0, lo), min(w, hi)
+            return (csum[hi] - csum[lo]) / max(1, hi - lo)
+
+        scores = {}
+        for n in range(2, max_n + 1):
+            if w % n or w // n < min_cell:
+                continue
+            fw = w // n
+            half, band = fw // 2, max(1, fw // 16)
+
+            def edge_likeness(x):
+                """1 = looks like a frame edge (empty gutter or hard cut), 0 = frame content"""
+                p_loc = band_mean(cp, x - half, x + half)
+                if p_loc < 0.05 * p_ref:
+                    return 1.0                              # empty area looks like a gutter
+                gutter = 1 - min(1.0, band_mean(cp, x - band, x + band) / p_loc)
+                cut = min(1.0, spike[min(x, w - 1)] / (band_mean(cs, x - half, x + half) + 1e-6) / 2)
+                return max(gutter, cut)
+
+            bounds = [edge_likeness(k * fw) for k in range(1, n)]
+            mids = [edge_likeness(k * fw + half) for k in range(n)]
+            # Most boundaries must look like edges while cell centers must not
+            scores[n] = np.percentile(bounds, 25) - np.mean(mids)
+
+        if not scores or max(scores.values()) < 0.3:
+            return 1
+        best = max(scores.values())
+        # Coarser grids (subset of the true edges) can score as high: take the finest near-best
+        return max(n for n, v in scores.items() if v >= 0.8 * best)
 
     def _on_grid(self):
         if self.atlas:

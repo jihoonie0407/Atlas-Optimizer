@@ -1,4 +1,4 @@
-# AtlasOptimizer v1.2.4
+# AtlasOptimizer v1.2.5
 <img width="1652" height="900" alt="image" src="https://github.com/user-attachments/assets/3a69bca1-d6b6-4c9e-8c98-6c4c88ca9532" />
 
 
@@ -34,6 +34,11 @@ FX 시퀀스 아틀라스(Flipbook Texture)의 여백을 자동으로 제거하�
 5. **Save** - PNG, TGA, JPG, GIF 저장
 
 ## Changelog
+
+### v1.2.5
+- **그리드 자동 감지 개선** - 가로/세로를 따로 분석해 셀 경계가 빈 여백(또는 여백 없는 프레임 간 끊김)이고 셀 중앙에 내용이 있는 Row/Column 선택
+  - 1줄 스트립(1x8 등), 7x7·9x9 같은 그리드, 여백 없이 꽉 찬 프레임, 큰 셀에 작은 이펙트, JPEG 노이즈 배경 감지 가능
+  - 감지 속도 약 3배 향상
 
 ### v1.2.4
 - **Auto Fit 채널 선택** - Xform 패널 RGBA 토글에서 켜진 채널 기준으로 bbox 계산 (예: A만 켜면 알파 기준, R만 켜면 R 기준). 전부 켜짐 = 기존 자동 판별
