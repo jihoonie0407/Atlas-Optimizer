@@ -1750,9 +1750,9 @@ class MainWindow(QMainWindow):
             img = self.result_atlas
 
             if ext in ('.jpg', '.jpeg'):
-                # JPEG doesn't support alpha, convert to RGB
+                # JPEG doesn't support alpha: composite onto white so transparent areas read as white elsewhere
                 if img.mode == 'RGBA':
-                    bg = Image.new('RGB', img.size, (0, 0, 0))
+                    bg = Image.new('RGB', img.size, (255, 255, 255))
                     bg.paste(img, mask=img.split()[3])
                     img = bg
                 img.save(path, quality=95)
