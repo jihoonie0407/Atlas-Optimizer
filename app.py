@@ -2,7 +2,7 @@
 AtlasOptimizer - Houdini style
 demosaic -> transform (within frame bounds) -> mosaic
 """
-VERSION = "1.2.5"
+VERSION = "1.2.6"
 
 import sys
 import math
@@ -30,6 +30,18 @@ def _nearest_pot(v):
     if v - lower <= upper - v:
         return lower
     return upper
+
+
+# Pillow은 RGBA resize/rotate 시 내부적으로 알파 premultiply → 알파 0인 곳의 RGB가 0으로 날아감
+# (채널 패킹 텍스처 원본 훼손). 채널별로 따로 처리해서 원본 RGB 보존
+def _resize_rgba(img, size, resample=Image.Resampling.LANCZOS):
+    """채널 독립 resize (알파 premultiply 없음)"""
+    return Image.merge(img.mode, [b.resize(size, resample) for b in img.split()])
+
+
+def _rotate_rgba(img, angle, resample=Image.Resampling.BICUBIC, expand=True):
+    """채널 독립 rotate (알파 premultiply 없음)"""
+    return Image.merge(img.mode, [b.rotate(angle, resample=resample, expand=expand) for b in img.split()])
 
 
 class JumpSlider(QSlider):
@@ -1610,7 +1622,7 @@ class MainWindow(QMainWindow):
         nw = int(img.width * t['sx'])
         nh = int(img.height * t['sy'])
         if nw > 0 and nh > 0:
-            img = img.resize((nw, nh), Image.Resampling.LANCZOS)
+            img = _resize_rgba(img, (nw, nh))
             pad_x = int(pad * t['sx'])
             pad_y = int(pad * t['sy'])
         else:
@@ -1618,7 +1630,7 @@ class MainWindow(QMainWindow):
 
         # Rotate
         if t['rotation'] != 0:
-            img = img.rotate(-t['rotation'], expand=True, resample=Image.Resampling.BICUBIC)
+            img = _rotate_rgba(img, -t['rotation'])
 
         # Crop to frame bounds
         cx = img.width // 2 - int(t['tx'] * t['sx'])
@@ -1647,7 +1659,7 @@ class MainWindow(QMainWindow):
         target_size = self.res_presets[self.res_index]
         w, h = self.result_atlas.size
         if (w, h) != (target_size, target_size):
-            self.result_atlas = self.result_atlas.resize((target_size, target_size), Image.Resampling.LANCZOS)
+            self.result_atlas = _resize_rgba(self.result_atlas, (target_size, target_size))
 
         self._update_result_preview()
         self.result_info.setText(f"{self.result_atlas.width}x{self.result_atlas.height}")
@@ -1680,8 +1692,7 @@ class MainWindow(QMainWindow):
         cell_h = atlas_target // grid_r
         if cell_w > 0 and cell_h > 0:
             if fw != cell_w or fh != cell_h:
-                rendered = [f.resize((cell_w, cell_h), Image.Resampling.LANCZOS)
-                           for f in rendered]
+                rendered = [_resize_rgba(f, (cell_w, cell_h)) for f in rendered]
 
         packed, new_r, new_c = stagger_pack(rendered, r, c)
 

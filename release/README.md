@@ -1,4 +1,4 @@
-# AtlasOptimizer v1.2.5
+# AtlasOptimizer v1.2.6
 <img width="1652" height="900" alt="image" src="https://github.com/user-attachments/assets/3a69bca1-d6b6-4c9e-8c98-6c4c88ca9532" />
 
 
@@ -34,6 +34,9 @@ FX 시퀀스 아틀라스(Flipbook Texture)의 여백을 자동으로 제거하�
 5. **Save** - PNG, TGA, JPG, GIF 저장
 
 ## Changelog
+
+### v1.2.6
+- **RGB 채널 원본 보존** - Optimize/Stagger의 스케일·회전·최종 리사이즈를 채널별로 독립 처리. 알파가 0이거나 낮은 영역의 RGB가 검게 날아가거나 알파 모양으로 잘리던 문제 수정 (채널 패킹 텍스처 대응)
 
 ### v1.2.5
 - **그리드 자동 감지 개선** - 가로/세로를 따로 분석해 셀 경계가 빈 여백(또는 여백 없는 프레임 간 끊김)이고 셀 중앙에 내용이 있는 Row/Column 선택
