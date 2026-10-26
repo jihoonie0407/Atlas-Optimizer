@@ -37,7 +37,7 @@ Atlas Input → Demosaic → Transform (Auto BBox / Manual) → Mosaic → Final
 | 기능 | 설명 |
 |------|------|
 | **자동 그리드 감지** | 이미지 로드 시 알파/밝기 분석으로 Row/Column 자동 판별 |
-| **Auto Fit** | 전체 프레임 합집합 바운딩 박스 산출 → Scale/Translate 자동 설정 |
+| **Auto Fit** | 전체 프레임 합집합 바운딩 박스 산출 → Scale/Translate 자동 설정. Xform RGBA 토글에서 켜진 채널 기준 (전부 켜짐 = 알파 유무 자동 판별) |
 | **Free Transform** | Photoshop 스타일 기즈모 - 코너(균등 스케일), 엣지(축별 스케일), 외곽(회전), 중앙(이동), 휠(스케일) |
 | **Location X/Y** | 원점 기준 이동량 슬라이더, AutoFit 시 bbox 오프셋 자동 반영 |
 | **Ghost 모드** | 현재 프레임 전후 프레임을 Screen 블렌딩으로 반투명 표시 (1~32 Steps) |

@@ -2,7 +2,7 @@
 AtlasOptimizer - Houdini style
 demosaic -> transform (within frame bounds) -> mosaic
 """
-VERSION = "1.2.3"
+VERSION = "1.2.4"
 
 import sys
 import math
@@ -56,7 +56,7 @@ class JumpSlider(QSlider):
             self.setValue(value)
             event.accept()
         super().mousePressEvent(event)
-from PyQt5.QtCore import Qt, QTimer, QRect, QRectF, QPointF, QMimeData
+from PyQt5.QtCore import Qt, QTimer, QRect, QRectF, QPointF, QMimeData, QSettings, QStandardPaths
 from PyQt5.QtGui import QFont
 from PyQt5.QtGui import QPixmap, QImage, QPainter, QColor, QPen, QBrush, QCursor, QPainterPath, QIcon
 
@@ -578,6 +578,8 @@ class MainWindow(QMainWindow):
         self.result_atlas = None
         self._stagger_grid = None
         self.original_filename = "result"  # For save dialog
+        self._source_dir = None    # Folder of the loaded file (save dialog default)
+        self._settings = QSettings("AtlasOptimizer", "AtlasOptimizer")  # Persists dialog folders
         self.channel_view = {'R': True, 'G': True, 'B': True, 'A': True}  # RGBA channel toggles
 
         # Resolution presets (power of 2)
@@ -990,14 +992,35 @@ class MainWindow(QMainWindow):
         if paths:
             self._load_files(sorted(paths))
 
+    def _desktop_dir(self):
+        return QStandardPaths.writableLocation(QStandardPaths.DesktopLocation) or str(Path.home())
+
+    def _open_dir(self):
+        """Load dialog start folder: last opened folder → Desktop"""
+        d = self._settings.value("last_open_dir", "", type=str)
+        return d if d and Path(d).is_dir() else self._desktop_dir()
+
+    def _save_dir(self):
+        """Save dialog start folder: folder last saved to from this source folder → source folder → Desktop"""
+        src = self._source_dir
+        last_src = self._settings.value("last_save_src_dir", "", type=str)
+        last_save = self._settings.value("last_save_dir", "", type=str)
+        for d in ((last_save if src and last_src == src else ""), src):
+            if d and Path(d).is_dir():
+                return d
+        return self._desktop_dir()
+
     def _load(self):
-        paths, _ = QFileDialog.getOpenFileNames(self, "Load", "", "Images (*.png *.jpg *.tga);;All (*)")
+        paths, _ = QFileDialog.getOpenFileNames(self, "Load", self._open_dir(), "Images (*.png *.jpg *.tga);;All (*)")
         if paths:
             self._load_files(paths)
 
     def _load_files(self, paths):
         # Reset all settings
         self._reset()
+        for ch, btn in self.channel_btns.items():
+            btn.setChecked(True)
+            self.channel_view[ch] = True
         self.result_atlas = None
         self._stagger_grid = None
         self.result_preview.set_image(None)
@@ -1080,6 +1103,9 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Load Error",
                 f"Failed to load image:\n{e}")
             return
+
+        self._source_dir = str(Path(paths[0]).parent)
+        self._settings.setValue("last_open_dir", self._source_dir)
 
         # Auto fit immediately
         self._auto_fit()
@@ -1222,9 +1248,23 @@ class MainWindow(QMainWindow):
         padding = self.padding_slider.value()
         fw, fh = self.frame_size
 
-        # Check if frames have meaningful alpha (not all opaque)
-        first_frame = np.array(self.frames[0])
-        has_alpha = np.any(first_frame[:, :, 3] < 250)
+        # Mask channels follow the Xform RGBA toggles; all on (or none) = auto
+        selected = [ch for ch in 'RGBA' if self.channel_view[ch]]
+        auto = len(selected) in (0, 4)
+        if auto:
+            # Meaningful alpha: any non-empty frame that isn't fully opaque
+            # (empty frames are skipped so sequence padding doesn't count)
+            has_alpha = False
+            for frame in self.frames:
+                a = np.array(frame)[:, :, 3]
+                if a.max() > 0 and a.min() < 250:
+                    has_alpha = True
+                    break
+            selected = ['A'] if has_alpha else ['R', 'G', 'B']
+        basis = ("Auto:" if auto else "") + "".join(selected)
+        ch_idx = ['RGBA'.index(ch) for ch in selected]
+        # Alpha: any non-zero / Color: > 10 to skip near-black background
+        thresholds = np.array([0 if i == 3 else 10 for i in ch_idx])
 
         # Find global bounding box across all frames
         global_left, global_top = fw, fh
@@ -1232,14 +1272,7 @@ class MainWindow(QMainWindow):
 
         for frame in self.frames:
             arr = np.array(frame)
-
-            if has_alpha:
-                # Use alpha channel
-                mask = arr[:, :, 3] > 0
-            else:
-                # Use brightness (grayscale)
-                brightness = np.mean(arr[:, :, :3], axis=2)
-                mask = brightness > 10  # Threshold for dark pixels
+            mask = np.any(arr[:, :, ch_idx] > thresholds, axis=2)
 
             rows = np.any(mask, axis=1)
             cols = np.any(mask, axis=0)
@@ -1254,7 +1287,8 @@ class MainWindow(QMainWindow):
                 global_bottom = max(global_bottom, y_max)
 
         if global_right <= global_left or global_bottom <= global_top:
-            return  # No content found
+            self.grid_info.setText(f"Auto Fit: no content in {basis}")
+            return
 
         # Apply padding
         global_left = max(0, global_left - padding)
@@ -1309,7 +1343,7 @@ class MainWindow(QMainWindow):
         self.rot_label.setText("0°")
 
         # Show info
-        self.grid_info.setText(f"BBox: {bbox_w}x{bbox_h} | Scale: {scale_x:.2f}x{scale_y:.2f}")
+        self.grid_info.setText(f"BBox: {bbox_w}x{bbox_h} | Scale: {scale_x:.2f}x{scale_y:.2f} | Ch: {basis}")
 
     def _on_channel_toggle(self):
         """Update channel view state from buttons"""
@@ -1721,9 +1755,12 @@ class MainWindow(QMainWindow):
         if not self.result_atlas:
             return
         filters = "PNG (*.png);;TGA (*.tga);;JPEG (*.jpg *.jpeg);;GIF (*.gif);;All (*)"
-        default_name = f"{self.original_filename}.png"
-        path, selected_filter = QFileDialog.getSaveFileName(self, "Save", default_name, filters)
+        default_path = str(Path(self._save_dir()) / f"{self.original_filename}.png")
+        path, selected_filter = QFileDialog.getSaveFileName(self, "Save", default_path, filters)
         if path:
+            self._settings.setValue("last_save_dir", str(Path(path).parent))
+            self._settings.setValue("last_save_src_dir", self._source_dir or "")
+
             # Handle format based on extension
             ext = Path(path).suffix.lower()
             img = self.result_atlas

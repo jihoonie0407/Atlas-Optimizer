@@ -1,4 +1,4 @@
-# AtlasOptimizer v1.2.3
+# AtlasOptimizer v1.2.4
 <img width="1652" height="900" alt="image" src="https://github.com/user-attachments/assets/3a69bca1-d6b6-4c9e-8c98-6c4c88ca9532" />
 
 
@@ -6,7 +6,7 @@ FX 시퀀스 아틀라스(Flipbook Texture)의 여백을 자동으로 제거하�
 
 ## Features
 
-- **Auto Fit** - 전체 프레임 합집합 바운딩 박스 자동 산출, 여백 제거
+- **Auto Fit** - 전체 프레임 합집합 바운딩 박스 자동 산출, 여백 제거 (Xform RGBA 토글로 기준 채널 선택)
 - **Free Transform** - Photoshop 스타일 기즈모 (스케일/회전/이동)
 - **Stagger Pack** - 인접 4프레임을 RGBA 채널에 분산 배치, 텍스처 압축 최적화
 - **Sequence Input** - 아틀라스 1장 또는 시퀀스 이미지 여러 장 입력 지원
@@ -34,6 +34,11 @@ FX 시퀀스 아틀라스(Flipbook Texture)의 여백을 자동으로 제거하�
 5. **Save** - PNG, TGA, JPG, GIF 저장
 
 ## Changelog
+
+### v1.2.4
+- **Auto Fit 채널 선택** - Xform 패널 RGBA 토글에서 켜진 채널 기준으로 bbox 계산 (예: A만 켜면 알파 기준, R만 켜면 R 기준). 전부 켜짐 = 기존 자동 판별
+- **자동 판별 개선** - 첫 프레임만이 아닌 전체 프레임 기준으로 알파 유무 판단, RGB 이미지는 어두운 단색도 놓치지 않도록 채널 최대값 기준으로 변경
+- **저장/열기 기본 경로** - 열기는 마지막으로 연 폴더, 저장은 원본 이미지 폴더(또는 그 폴더 작업 시 마지막 저장 폴더)로 열림. 없으면 바탕화면
 
 ### v1.2.3
 - **정사각형 POT 출력 강제** - Optimize/Stagger 출력을 항상 정사각형(NxN) POT로 생성. 엔진 런타임 리사이즈 없이 바로 사용 가능
