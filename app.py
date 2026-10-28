@@ -2,7 +2,7 @@
 AtlasOptimizer - Houdini style
 demosaic -> transform (within frame bounds) -> mosaic
 """
-VERSION = "1.2.7"
+VERSION = "1.2.8"
 
 import sys
 import math
@@ -602,7 +602,6 @@ class MainWindow(QMainWindow):
         self.original_filename = "result"  # For save dialog
         self.original_ext = ".png"          # Loaded file format (save dialog default)
         self._source_dir = None    # Folder of the loaded file (save dialog default)
-        self._source_file = None   # Loaded file path (save dialog must not default to overwriting it)
         self._settings = QSettings("AtlasOptimizer", "AtlasOptimizer")  # Persists dialog folders
         self.channel_view = {'R': True, 'G': True, 'B': True, 'A': True}  # RGBA channel toggles
 
@@ -1129,7 +1128,6 @@ class MainWindow(QMainWindow):
             return
 
         self._source_dir = str(Path(paths[0]).parent)
-        self._source_file = str(Path(paths[0]))
         self.original_ext = Path(paths[0]).suffix.lower()
         self._settings.setValue("last_open_dir", self._source_dir)
 
@@ -1759,9 +1757,6 @@ class MainWindow(QMainWindow):
         if initial is None:
             ext, initial = ".png", next(iter(filters))
         default_path = Path(self._save_dir()) / f"{self.original_filename}{ext}"
-        if self._source_file and default_path.resolve() == Path(self._source_file).resolve():
-            # Don't default to overwriting the loaded original
-            default_path = default_path.with_name(f"{self.original_filename}_optimized{ext}")
         path, selected_filter = QFileDialog.getSaveFileName(
             self, "Save", str(default_path), ";;".join([*filters, "All (*)"]), initial)
         if path:
