@@ -2,7 +2,7 @@
 AtlasOptimizer - Houdini style
 demosaic -> transform (within frame bounds) -> mosaic
 """
-VERSION = "1.2.6"
+VERSION = "1.2.7"
 
 import sys
 import math
@@ -30,6 +30,16 @@ def _nearest_pot(v):
     if v - lower <= upper - v:
         return lower
     return upper
+
+
+# 저장 포맷 (필터 라벨, 확장자). 기본값은 불러온 파일 포맷
+SAVE_FORMATS = [
+    ("PNG", (".png",)),
+    ("TGA", (".tga",)),
+    ("JPEG", (".jpg", ".jpeg")),
+    ("BMP", (".bmp",)),
+    ("GIF", (".gif",)),
+]
 
 
 # Pillow은 RGBA resize/rotate 시 내부적으로 알파 premultiply → 알파 0인 곳의 RGB가 0으로 날아감
@@ -590,7 +600,9 @@ class MainWindow(QMainWindow):
         self.result_atlas = None
         self._stagger_grid = None
         self.original_filename = "result"  # For save dialog
+        self.original_ext = ".png"          # Loaded file format (save dialog default)
         self._source_dir = None    # Folder of the loaded file (save dialog default)
+        self._source_file = None   # Loaded file path (save dialog must not default to overwriting it)
         self._settings = QSettings("AtlasOptimizer", "AtlasOptimizer")  # Persists dialog folders
         self.channel_view = {'R': True, 'G': True, 'B': True, 'A': True}  # RGBA channel toggles
 
@@ -1023,7 +1035,7 @@ class MainWindow(QMainWindow):
         return self._desktop_dir()
 
     def _load(self):
-        paths, _ = QFileDialog.getOpenFileNames(self, "Load", self._open_dir(), "Images (*.png *.jpg *.tga);;All (*)")
+        paths, _ = QFileDialog.getOpenFileNames(self, "Load", self._open_dir(), "Images (*.png *.jpg *.jpeg *.tga *.bmp);;All (*)")
         if paths:
             self._load_files(paths)
 
@@ -1117,6 +1129,8 @@ class MainWindow(QMainWindow):
             return
 
         self._source_dir = str(Path(paths[0]).parent)
+        self._source_file = str(Path(paths[0]))
+        self.original_ext = Path(paths[0]).suffix.lower()
         self._settings.setValue("last_open_dir", self._source_dir)
 
         # Auto fit immediately
@@ -1738,10 +1752,22 @@ class MainWindow(QMainWindow):
     def _save(self):
         if not self.result_atlas:
             return
-        filters = "PNG (*.png);;TGA (*.tga);;JPEG (*.jpg *.jpeg);;GIF (*.gif);;All (*)"
-        default_path = str(Path(self._save_dir()) / f"{self.original_filename}.png")
-        path, selected_filter = QFileDialog.getSaveFileName(self, "Save", default_path, filters)
+        filters = {f"{name} ({' '.join('*' + e for e in exts)})": exts for name, exts in SAVE_FORMATS}
+        # Default to the loaded file's format (fallback PNG)
+        ext = self.original_ext
+        initial = next((f for f, exts in filters.items() if ext in exts), None)
+        if initial is None:
+            ext, initial = ".png", next(iter(filters))
+        default_path = Path(self._save_dir()) / f"{self.original_filename}{ext}"
+        if self._source_file and default_path.resolve() == Path(self._source_file).resolve():
+            # Don't default to overwriting the loaded original
+            default_path = default_path.with_name(f"{self.original_filename}_optimized{ext}")
+        path, selected_filter = QFileDialog.getSaveFileName(
+            self, "Save", str(default_path), ";;".join([*filters, "All (*)"]), initial)
         if path:
+            if not Path(path).suffix:
+                # No extension typed: use the selected filter's format
+                path += filters.get(selected_filter, (ext,))[0]
             self._settings.setValue("last_save_dir", str(Path(path).parent))
             self._settings.setValue("last_save_src_dir", self._source_dir or "")
 
@@ -1749,17 +1775,20 @@ class MainWindow(QMainWindow):
             ext = Path(path).suffix.lower()
             img = self.result_atlas
 
-            if ext in ('.jpg', '.jpeg'):
-                # JPEG doesn't support alpha: composite onto white so transparent areas read as white elsewhere
-                if img.mode == 'RGBA':
-                    bg = Image.new('RGB', img.size, (255, 255, 255))
-                    bg.paste(img, mask=img.split()[3])
-                    img = bg
-                img.save(path, quality=95)
-            elif ext == '.gif':
-                img.save(path)
-            else:
-                img.save(path)
+            if ext in ('.jpg', '.jpeg', '.bmp') and img.mode == 'RGBA':
+                # No alpha support: composite onto white so transparent areas read as white elsewhere
+                bg = Image.new('RGB', img.size, (255, 255, 255))
+                bg.paste(img, mask=img.split()[3])
+                img = bg
+
+            try:
+                if ext in ('.jpg', '.jpeg'):
+                    img.save(path, quality=95)
+                else:
+                    img.save(path)
+            except Exception as e:
+                QMessageBox.warning(self, "Save Error", f"Failed to save:\n{e}")
+                return
 
             self.result_info.setText(f"Saved: {Path(path).name}")
 

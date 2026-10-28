@@ -1,4 +1,4 @@
-# AtlasOptimizer v1.2.6
+# AtlasOptimizer v1.2.7
 <img width="1652" height="900" alt="image" src="https://github.com/user-attachments/assets/3a69bca1-d6b6-4c9e-8c98-6c4c88ca9532" />
 
 
@@ -34,6 +34,12 @@ FX 시퀀스 아틀라스(Flipbook Texture)의 여백을 자동으로 제거하�
 5. **Save** - PNG, TGA, JPG, GIF 저장
 
 ## Changelog
+
+### v1.2.7
+- **불러온 포맷으로 저장** - 저장 창 기본 파일명/형식을 불러온 파일 포맷(PNG/TGA/JPG/BMP)으로 설정 (기존: 항상 PNG)
+- **원본 덮어쓰기 방지** - 기본 저장 경로가 불러온 원본과 같으면 파일명에 `_optimized` 추가
+- **BMP 저장 지원** - JPG와 동일하게 알파는 흰 배경에 합성
+- 확장자 없이 입력하면 선택한 형식의 확장자 자동 추가, 지원하지 않는 확장자는 에러 메시지 표시
 
 ### v1.2.6
 - **RGB 채널 원본 보존** - Optimize/Stagger의 스케일·회전·최종 리사이즈를 채널별로 독립 처리. 알파가 0이거나 낮은 영역의 RGB가 검게 날아가거나 알파 모양으로 잘리던 문제 수정 (채널 패킹 텍스처 대응)
