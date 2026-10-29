@@ -2,7 +2,7 @@
 AtlasOptimizer - Houdini style
 demosaic -> transform (within frame bounds) -> mosaic
 """
-VERSION = "1.2.8"
+VERSION = "1.2.9"
 
 import sys
 import math
@@ -611,6 +611,12 @@ class MainWindow(QMainWindow):
 
         self.play_timer = QTimer()
         self.play_timer.timeout.connect(self._next_frame)
+
+        # Size change → rebuild result (debounced so rapid +/- clicks render once)
+        self._res_timer = QTimer()
+        self._res_timer.setSingleShot(True)
+        self._res_timer.setInterval(250)
+        self._res_timer.timeout.connect(self._rebuild_result)
 
         self.setAcceptDrops(True)
         self._init_ui()
@@ -1736,6 +1742,18 @@ class MainWindow(QMainWindow):
 
     def _update_res_label(self):
         self.res_label.setText(str(self.res_presets[self.res_index]))
+        if self.result_atlas is not None:
+            self._res_timer.start()
+
+    def _rebuild_result(self):
+        """Re-run the last output (Optimize/Stagger) at the current size"""
+        self._res_timer.stop()
+        if self.result_atlas is None or not self.frames:
+            return
+        if self._stagger_grid:
+            self._stagger()
+        else:
+            self._mosaic()
 
     def _toggle_grid(self):
         if self.grid_check.isChecked():
@@ -1750,6 +1768,8 @@ class MainWindow(QMainWindow):
     def _save(self):
         if not self.result_atlas:
             return
+        if self._res_timer.isActive():
+            self._rebuild_result()  # Size changed just before save
         filters = {f"{name} ({' '.join('*' + e for e in exts)})": exts for name, exts in SAVE_FORMATS}
         # Default to the loaded file's format (fallback PNG)
         ext = self.original_ext

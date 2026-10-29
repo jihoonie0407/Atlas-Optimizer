@@ -1,4 +1,4 @@
-# AtlasOptimizer v1.2.8
+# AtlasOptimizer v1.2.9
 <img width="1652" height="900" alt="image" src="https://github.com/user-attachments/assets/3a69bca1-d6b6-4c9e-8c98-6c4c88ca9532" />
 
 
@@ -34,6 +34,9 @@ FX 시퀀스 아틀라스(Flipbook Texture)의 여백을 자동으로 제거하�
 5. **Save** - PNG, TGA, JPG, GIF 저장
 
 ## Changelog
+
+### v1.2.9
+- **Size 변경 시 결과 자동 갱신** - Optimize/Stagger 후 Size를 바꾸면 마지막 작업을 새 크기로 다시 생성 (기존: 이전 크기 그대로 저장되던 문제)
 
 ### v1.2.8
 - **저장 기본 파일명 원본과 동일** - v1.2.7의 `_optimized` 자동 추가 제거. 원본 이름 그대로 저장 창이 열려 바로 덮어쓰기 가능
